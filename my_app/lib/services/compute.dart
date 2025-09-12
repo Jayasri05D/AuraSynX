@@ -74,7 +74,7 @@ class ComputeService {
     }
     return sum;
   }
-
+ 
   /// Compute Heavy Metal Pollution Index (HPI)
   double computeHPI(Map<String, double> sample) {
     double numerator = 0.0;
