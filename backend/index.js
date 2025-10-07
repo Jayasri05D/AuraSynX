@@ -73,53 +73,80 @@
 //   console.log(`Server running at http://localhost:${port}`);
 // });
 
-const express = require('express');
-const cors = require('cors'); // <-- Import cors
-const app = express();
-const port = 3000;
+// const express = require('express');
+// const cors = require('cors'); // <-- Import cors
+// const app = express();
+// const port = 3000;
 
-// Middleware
-app.use(cors()); // <-- Allow all origins
-app.use(express.json()); // <-- Parse JSON request bodies
+// // Middleware
+// app.use(cors()); // <-- Allow all origins
+// app.use(express.json()); // <-- Parse JSON request bodies
 
-const db = require('./db'); // your db connection
+// const db = require('./db'); // your db connection
 
-app.get('/', (req, res) => {
-  res.send('Backend is running!');
-});
+// app.get('/', (req, res) => {
+//   res.send('Backend is running!');
+// });
 
-app.get('/samples', async (req, res) => {
+// app.get('/samples', async (req, res) => {
+//   try {
+//     const [rows] = await db.query('SELECT * FROM samples');
+//     res.json(rows);
+//   } catch (e) {
+//     res.status(500).send(e.toString());
+//   }
+// });
+
+// app.post('/samples', async (req, res) => {
+//   try {
+//     const data = req.body;
+//     console.log("Received:", data);
+//     const result = await db.query(
+//       'INSERT INTO samples (timestamp, latitude, longitude, rawData, hei, hpi, classification, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+//       [
+//         data.timestamp,
+//         data.latitude,
+//         data.longitude,
+//         JSON.stringify(data.rawData),
+//         data.hei,
+//         data.hpi,
+//         data.classification,
+//         data.syncStatus
+//       ]
+//     );
+//     res.status(200).json({ success: true, id: result[0].insertId });
+//   } catch (e) {
+//     res.status(500).send(e.toString());
+//   }
+// });
+
+// app.listen(port, () => {
+//   console.log(`Server running at http://localhost:${port}`);
+// });
+
+const pool = require('./db');
+
+async function init() {
+  const createTableSQL = `
+    CREATE TABLE IF NOT EXISTS samples (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      timestamp VARCHAR(50),
+      latitude DOUBLE,
+      longitude DOUBLE,
+      rawData JSON,
+      hei DOUBLE,
+      hpi DOUBLE,
+      classification VARCHAR(20),
+      syncStatus VARCHAR(20)
+    )
+  `;
+
   try {
-    const [rows] = await db.query('SELECT * FROM samples');
-    res.json(rows);
-  } catch (e) {
-    res.status(500).send(e.toString());
+    await pool.query(createTableSQL);
+    console.log('✅ Table ensured');
+  } catch (err) {
+    console.error("❌ Error ensuring table:", err.message);
   }
-});
+}
 
-app.post('/samples', async (req, res) => {
-  try {
-    const data = req.body;
-    console.log("Received:", data);
-    const result = await db.query(
-      'INSERT INTO samples (timestamp, latitude, longitude, rawData, hei, hpi, classification, syncStatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        data.timestamp,
-        data.latitude,
-        data.longitude,
-        JSON.stringify(data.rawData),
-        data.hei,
-        data.hpi,
-        data.classification,
-        data.syncStatus
-      ]
-    );
-    res.status(200).json({ success: true, id: result[0].insertId });
-  } catch (e) {
-    res.status(500).send(e.toString());
-  }
-});
-
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
-});
+init();

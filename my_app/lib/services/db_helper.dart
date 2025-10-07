@@ -112,6 +112,58 @@
 //     await _box.put(key, data);
 //   }
 // }
+// import 'package:hive_flutter/hive_flutter.dart';
+// import '../models/sample.dart';
+
+// class DBHelper {
+//   DBHelper._privateConstructor();
+//   static final DBHelper instance = DBHelper._privateConstructor();
+
+//   late Box _box;
+
+//   Future<void> init() async {
+//     await Hive.initFlutter();
+//     _box = await Hive.openBox('samples');
+//   }
+
+//   /// Insert sample and return its key
+//   Future<String> insertSample(Sample s) async {
+//     final key = DateTime.now().millisecondsSinceEpoch.toString();
+//     await _box.put(key, s.toMap());
+//     return key;
+//   }
+
+//   /// Fetch all samples
+//   List<Sample> fetchAll() {
+//     return _box.values
+//         .map((v) => Sample.fromMap(Map<String, dynamic>.from(v)))
+//         .toList()
+//       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+//   }
+
+//   /// Fetch pending samples
+//   List<Sample> fetchPending() {
+//     return _box.values
+//         .map((v) => Sample.fromMap(Map<String, dynamic>.from(v)))
+//         .where((s) => s.syncStatus == 'pending')
+//         .toList();
+//   }
+
+//   /// Mark a sample as synced
+//   Future<void> markSynced(String key, int serverId) async {
+//     final data = Map<String, dynamic>.from(_box.get(key));
+//     data['syncStatus'] = 'synced';
+//     data['serverId'] = serverId;
+//     await _box.put(key, data);
+//   }
+
+//   /// Fetch by key
+//   Sample? fetchByKey(String key) {
+//     final data = _box.get(key);
+//     if (data == null) return null;
+//     return Sample.fromMap(Map<String, dynamic>.from(data));
+//   }
+// }
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/sample.dart';
 
@@ -119,48 +171,56 @@ class DBHelper {
   DBHelper._privateConstructor();
   static final DBHelper instance = DBHelper._privateConstructor();
 
-  late Box _box;
+  static const String _boxName = 'samples';
+  late Box<Sample> _box;
 
+  /// Initialize Hive and open the box safely
   Future<void> init() async {
     await Hive.initFlutter();
-    _box = await Hive.openBox('samples');
+
+    // Register adapter if not already registered
+    if (!Hive.isAdapterRegistered(0)) {
+      Hive.registerAdapter(SampleAdapter());
+    }
+
+    // Open the box only if not already open
+    if (Hive.isBoxOpen(_boxName)) {
+      _box = Hive.box<Sample>(_boxName);
+    } else {
+      _box = await Hive.openBox<Sample>(_boxName);
+    }
   }
 
-  /// Insert sample and return its key
+  /// Insert a sample
   Future<String> insertSample(Sample s) async {
     final key = DateTime.now().millisecondsSinceEpoch.toString();
-    await _box.put(key, s.toMap());
+    await _box.put(key, s);
     return key;
   }
 
-  /// Fetch all samples
+  /// Fetch all samples, sorted by timestamp (latest first)
   List<Sample> fetchAll() {
-    return _box.values
-        .map((v) => Sample.fromMap(Map<String, dynamic>.from(v)))
-        .toList()
+    return _box.values.toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   }
 
   /// Fetch pending samples
   List<Sample> fetchPending() {
-    return _box.values
-        .map((v) => Sample.fromMap(Map<String, dynamic>.from(v)))
-        .where((s) => s.syncStatus == 'pending')
-        .toList();
+    return _box.values.where((s) => s.syncStatus == 'pending').toList();
   }
 
   /// Mark a sample as synced
   Future<void> markSynced(String key, int serverId) async {
-    final data = Map<String, dynamic>.from(_box.get(key));
-    data['syncStatus'] = 'synced';
-    data['serverId'] = serverId;
-    await _box.put(key, data);
+    final sample = _box.get(key);
+    if (sample != null) {
+      sample.syncStatus = 'synced';
+      sample.serverId = serverId;
+      await sample.save(); // Save the updated object
+    }
   }
 
   /// Fetch by key
   Sample? fetchByKey(String key) {
-    final data = _box.get(key);
-    if (data == null) return null;
-    return Sample.fromMap(Map<String, dynamic>.from(data));
+    return _box.get(key);
   }
 }

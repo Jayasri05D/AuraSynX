@@ -1,14 +1,12 @@
 
-//third attempt
 // import 'package:flutter/material.dart';
+// import 'package:provider/provider.dart';
 // import '../services/file_parser.dart';
 // import '../services/compute.dart';
 // import '../services/db_helper.dart';
 // import '../models/sample.dart';
-// import '../screens/api_service.dart'; // <-- Import your ApiService
-// import 'map_screen.dart';
-// import '../screens/preview_screen.dart';
-// import '../screens/result_screen.dart';
+// import 'result_screen.dart';
+// import 'result_hub.dart';
 
 // class HomeScreen extends StatefulWidget {
 //   const HomeScreen({super.key});
@@ -18,110 +16,224 @@
 // }
 
 // class _HomeScreenState extends State<HomeScreen> {
-//   final TextEditingController latController = TextEditingController();
-//   final TextEditingController longController = TextEditingController();
+//   final TextEditingController _latCtrl = TextEditingController();
+//   final TextEditingController _lonCtrl = TextEditingController();
 
-//   @override
-//   void dispose() {
-//     latController.dispose();
-//     longController.dispose();
-//     super.dispose();
+//   Map<String, double>? parsedData;
+//   String? pickedFileName;
+//   bool isProcessing = false;
+//   Sample? currentSample;
+
+//   Future<void> _pickFile() async {
+//     setState(() {
+//       parsedData = null;
+//       pickedFileName = null;
+//       currentSample = null;
+//     });
+
+//     final map = await FileParser.pickAndParseFile();
+//     if (map == null || map.isEmpty) {
+//       ScaffoldMessenger.of(context)
+//           .showSnackBar(const SnackBar(content: Text('No data parsed')));
+//       return;
+//     }
+
+//     setState(() {
+//       parsedData = map;
+//       pickedFileName = 'File selected';
+//     });
+
+//     ScaffoldMessenger.of(context).showSnackBar(
+//       SnackBar(content: Text('Parsed ${map.length} metals from file')),
+//     );
 //   }
 
-//   Future<void> pickFile() async {
+//   Future<void> _submit() async {
+//     if (parsedData == null) {
+//       ScaffoldMessenger.of(context)
+//           .showSnackBar(const SnackBar(content: Text('Please select a file')));
+//       return;
+//     }
+
+//     setState(() => isProcessing = true);
+
 //     try {
-//       final map = await FileParser.pickAndParseFile();
-//       if (map == null) return;
-//       print('✅ Parsed RawData Map: $map');
+//       final compute = Provider.of<ComputeService>(context, listen: false);
+//       final hei = compute.computeHEI(parsedData!);
+//       final hpi = compute.computeHPI(parsedData!);
+//       final classification = compute.classifyByHEI(hei);
 
-//       final double hei = ComputeService().computeHEI(map);
-//       final double hpi = ComputeService().computeHPI(map);
-//       final String classification = ComputeService().classifyByHEI(hei);
-
-//       final double lat = double.tryParse(latController.text) ?? 11.0;
-//       final double lon = double.tryParse(longController.text) ?? 77.0;
-
-//       const standards = {"Pb": 0.01, "Cd": 0.003, "As": 0.01};
-//       bool isSafe = map.entries.every((e) =>
-//           standards[e.key] == null || e.value <= standards[e.key]!);
+//       final latText = _latCtrl.text.trim();
+//       final lonText = _lonCtrl.text.trim();
+//       final double? lat = latText.isEmpty ? null : double.tryParse(latText);
+//       final double? lon = lonText.isEmpty ? null : double.tryParse(lonText);
 
 //       final sample = Sample(
-//         timestamp: DateTime.now().toIso8601String(),
+//         timestamp: compute.timestampNow(),
 //         latitude: lat,
 //         longitude: lon,
-//         rawData: map,
+//         rawData: parsedData!,
 //         hei: hei,
 //         hpi: hpi,
 //         classification: classification,
 //         syncStatus: 'pending',
 //       );
 
-//       // Save to local Hive DB
-//       final key = await DBHelper.instance.insertSample(sample);
-//       final savedSample = sample.copyWith(id: int.tryParse(key));
+//       await DBHelper.instance.insertSample(sample);
 
-//       if (!mounted) return;
+//       setState(() {
+//         currentSample = sample;
+//       });
 
-//       // 🔹 Send the sample to backend
-//       bool sent = await ApiService.sendSample(savedSample);
-//       if (sent) {
-//         print('✅ Sample successfully sent to backend!');
-//       } else {
-//         print('❌ Failed to send sample to backend');
-//       }
-
-//       // Navigate to PreviewScreen
-//       Navigator.push(
-//         context,
-//         MaterialPageRoute(
-//           builder: (_) => PreviewScreen(
-//             sample: savedSample,
-//             onProceed: () {
-//               Navigator.push(
-//                 context,
-//                 MaterialPageRoute(
-//                   builder: (_) => ResultScreen(
-//                     latitude: lat,
-//                     longitude: lon,
-//                     isSafe: isSafe,
-//                     sample: savedSample,
-//                   ),
-//                 ),
-//               );
-//             },
-//           ),
-//         ),
+//       // Navigate to single-result screen
+//       Navigator.of(context).push(
+//         MaterialPageRoute(builder: (_) => ResultScreen(sample: sample)),
 //       );
 //     } catch (e) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text('Error picking file: $e')),
-//       );
+//       ScaffoldMessenger.of(context)
+//           .showSnackBar(SnackBar(content: Text('Error processing file: $e')));
+//     } finally {
+//       setState(() => isProcessing = false);
 //     }
+//   }
+
+//   @override
+//   void dispose() {
+//     _latCtrl.dispose();
+//     _lonCtrl.dispose();
+//     super.dispose();
 //   }
 
 //   @override
 //   Widget build(BuildContext context) {
 //     return Scaffold(
-//       appBar: AppBar(title: const Text('HEI / HPI - Home')),
+//       appBar: AppBar(
+//         title: const Text('AQUAMATRIX'),
+//         centerTitle: true,
+//       ),
 //       body: Padding(
 //         padding: const EdgeInsets.all(16.0),
 //         child: Column(
-//           crossAxisAlignment: CrossAxisAlignment.stretch,
 //           children: [
-//             TextField(
-//               controller: latController,
-//               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-//               decoration: const InputDecoration(labelText: 'Latitude (optional)'),
+//             // Scrollable content
+//             Expanded(
+//               child: SingleChildScrollView(
+//                 child: Column(
+//                   children: [
+//                     // Latitude / Longitude input
+//                     Row(
+//                       children: [
+//                         Expanded(
+//                           child: TextField(
+//                             controller: _latCtrl,
+//                             keyboardType: const TextInputType.numberWithOptions(
+//                                 decimal: true),
+//                             decoration: const InputDecoration(
+//                               labelText: 'Latitude',
+//                               hintText: 'e.g. 11.0168',
+//                             ),
+//                           ),
+//                         ),
+//                         const SizedBox(width: 12),
+//                         Expanded(
+//                           child: TextField(
+//                             controller: _lonCtrl,
+//                             keyboardType: const TextInputType.numberWithOptions(
+//                                 decimal: true),
+//                             decoration: const InputDecoration(
+//                               labelText: 'Longitude',
+//                               hintText: 'e.g. 76.9558',
+//                             ),
+//                           ),
+//                         ),
+//                       ],
+//                     ),
+
+//                     const SizedBox(height: 20),
+
+//                     // File picker
+//                     Row(
+//                       children: [
+//                         ElevatedButton.icon(
+//                           onPressed: isProcessing ? null : _pickFile,
+//                           icon: const Icon(Icons.attach_file),
+//                           label: const Text('Add a file'),
+//                         ),
+//                         const SizedBox(width: 12),
+//                         Expanded(
+//                           child: Text(pickedFileName ?? 'No file selected'),
+//                         ),
+//                       ],
+//                     ),
+
+//                     const SizedBox(height: 24),
+
+//                     // Submit button
+//                     SizedBox(
+//                       width: double.infinity,
+//                       child: ElevatedButton(
+//                         onPressed: isProcessing ? null : _submit,
+//                         child: isProcessing
+//                             ? const SizedBox(
+//                                 height: 18,
+//                                 width: 18,
+//                                 child: CircularProgressIndicator(
+//                                     strokeWidth: 2),
+//                               )
+//                             : const Text('Submit'),
+//                       ),
+//                     ),
+
+//                     const SizedBox(height: 16),
+
+//                     // Quick preview of parsed data
+//                     if (parsedData != null) ...[
+//                       const Align(
+//                         alignment: Alignment.centerLeft,
+//                         child: Text('Parsed values (preview):',
+//                             style: TextStyle(fontWeight: FontWeight.bold)),
+//                       ),
+//                       const SizedBox(height: 8),
+//                       SizedBox(
+//                         height: 120,
+//                         child: ListView(
+//                           children: parsedData!.entries
+//                               .map((e) => Text('${e.key} : ${e.value}'))
+//                               .toList(),
+//                         ),
+//                       ),
+//                     ],
+//                   ],
+//                 ),
+//               ),
 //             ),
-//             TextField(
-//               controller: longController,
-//               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-//               decoration: const InputDecoration(labelText: 'Longitude (optional)'),
-//             ),
+
 //             const SizedBox(height: 16),
-//             ElevatedButton(
-//               onPressed: pickFile,
-//               child: const Text('Pick CSV / XLSX / PDF'),
+
+//             // RESULT HUB BUTTON (always enabled)
+//             SizedBox(
+//               width: double.infinity,
+//               child: ElevatedButton.icon(
+//                 onPressed: () {
+//                   if (currentSample != null) {
+//                     Navigator.of(context).push(
+//                       MaterialPageRoute(
+//                         builder: (_) => ResultHub(sample: currentSample!),
+//                       ),
+//                     );
+//                   } else {
+//                     ScaffoldMessenger.of(context).showSnackBar(
+//                       const SnackBar(content: Text('No sample available yet')),
+//                     );
+//                   }
+//                 },
+//                 icon: const Icon(Icons.dashboard),
+//                 label: const Padding(
+//                   padding: EdgeInsets.symmetric(vertical: 16),
+//                   child:
+//                       Text('Go to Result Hub', style: TextStyle(fontSize: 18)),
+//                 ),
+//               ),
 //             ),
 //           ],
 //         ),
@@ -130,19 +242,15 @@
 //   }
 // }
 
-
-
-//new way to fetch the dAta from the backend
-
+//with no ui
 // import 'package:flutter/material.dart';
+// import 'package:provider/provider.dart';
 // import '../services/file_parser.dart';
 // import '../services/compute.dart';
 // import '../services/db_helper.dart';
 // import '../models/sample.dart';
-// import '../screens/api_service.dart'; // Make sure this is imported
-// import 'map_screen.dart';
-// import '../screens/preview_screen.dart';
-// import '../screens/result_screen.dart';
+// import 'result_screen.dart';
+// import 'result_hub.dart';
 
 // class HomeScreen extends StatefulWidget {
 //   const HomeScreen({super.key});
@@ -152,146 +260,218 @@
 // }
 
 // class _HomeScreenState extends State<HomeScreen> {
-//   final TextEditingController latController = TextEditingController();
-//   final TextEditingController longController = TextEditingController();
+//   final TextEditingController _latCtrl = TextEditingController();
+//   final TextEditingController _lonCtrl = TextEditingController();
 
-//   List<Sample> fetchedSamples = []; // Store samples from backend
+//   Map<String, double>? parsedData;
+//   String? pickedFileName;
+//   bool isProcessing = false;
+//   Sample? currentSample;
 
-//   @override
-//   void dispose() {
-//     latController.dispose();
-//     longController.dispose();
-//     super.dispose();
+//   Future<void> _pickFile() async {
+//     setState(() {
+//       parsedData = null;
+//       pickedFileName = null;
+//       currentSample = null;
+//     });
+
+//     final map = await FileParser.pickAndParseFile();
+//     if (map == null || map.isEmpty) {
+//       ScaffoldMessenger.of(context)
+//           .showSnackBar(const SnackBar(content: Text('No data parsed')));
+//       return;
+//     }
+
+//     setState(() {
+//       parsedData = map;
+//       pickedFileName = 'File selected';
+//     });
+
+//     ScaffoldMessenger.of(context).showSnackBar(
+//       SnackBar(content: Text('Parsed ${map.length} metals from file')),
+//     );
 //   }
 
-//   Future<void> pickFile() async {
+//   Future<void> _submit() async {
+//     if (parsedData == null) {
+//       ScaffoldMessenger.of(context)
+//           .showSnackBar(const SnackBar(content: Text('Please select a file')));
+//       return;
+//     }
+
+//     setState(() => isProcessing = true);
+
 //     try {
-//       final map = await FileParser.pickAndParseFile();
-//       if (map == null) return;
+//       final compute = Provider.of<ComputeService>(context, listen: false);
+//       final hei = compute.computeHEI(parsedData!);
+//       final hpi = compute.computeHPI(parsedData!);
+//       final classification = compute.classifyByHEI(hei);
 
-//       final double hei = ComputeService().computeHEI(map);
-//       final double hpi = ComputeService().computeHPI(map);
-//       final String classification = ComputeService().classifyByHEI(hei);
-
-//       final double lat = double.tryParse(latController.text) ?? 11.0;
-//       final double lon = double.tryParse(longController.text) ?? 77.0;
-
-//       const standards = {"Pb": 0.01, "Cd": 0.003, "As": 0.01};
-//       bool isSafe = map.entries.every((e) =>
-//           standards[e.key] == null || e.value <= standards[e.key]!);
+//       final latText = _latCtrl.text.trim();
+//       final lonText = _lonCtrl.text.trim();
+//       final double? lat = latText.isEmpty ? null : double.tryParse(latText);
+//       final double? lon = lonText.isEmpty ? null : double.tryParse(lonText);
 
 //       final sample = Sample(
-//         timestamp: DateTime.now().toIso8601String(),
+//         timestamp: compute.timestampNow(),
 //         latitude: lat,
 //         longitude: lon,
-//         rawData: map,
+//         rawData: parsedData!,
 //         hei: hei,
 //         hpi: hpi,
 //         classification: classification,
 //         syncStatus: 'pending',
 //       );
 
-//       // Save to local Hive DB
-//       final key = await DBHelper.instance.insertSample(sample);
-//       final savedSample = sample.copyWith(id: int.tryParse(key));
+//       await DBHelper.instance.insertSample(sample);
 
-//       if (!mounted) return;
+//       setState(() {
+//         currentSample = sample;
+//       });
 
-//       // Send the sample to backend
-//       bool sent = await ApiService.sendSample(savedSample);
-//       print(sent ? '✅ Sample sent to backend' : '❌ Failed to send sample');
-
-//       // Navigate to PreviewScreen
-//       Navigator.push(
-//         context,
-//         MaterialPageRoute(
-//           builder: (_) => PreviewScreen(
-//             sample: savedSample,
-//             onProceed: () {
-//               Navigator.push(
-//                 context,
-//                 MaterialPageRoute(
-//                   builder: (_) => ResultScreen(
-//                     latitude: lat,
-//                     longitude: lon,
-//                     isSafe: isSafe,
-//                     sample: savedSample,
-//                   ),
-//                 ),
-//               );
-//             },
-//           ),
-//         ),
+//       // Navigate to single-result screen
+//       Navigator.of(context).push(
+//         MaterialPageRoute(builder: (_) => ResultScreen(sample: sample)),
 //       );
 //     } catch (e) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text('Error picking file: $e')),
-//       );
+//       ScaffoldMessenger.of(context)
+//           .showSnackBar(SnackBar(content: Text('Error processing file: $e')));
+//     } finally {
+//       setState(() => isProcessing = false);
 //     }
 //   }
 
-//   // 🔹 New method: Fetch all samples from backend
-//   Future<void> fetchAllSamples() async {
-//     try {
-//       List<Sample> samples = await ApiService.fetchSamples();
-//       setState(() {
-//         fetchedSamples = samples;
-//       });
-//     } catch (e) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text('Error fetching samples: $e')),
-//       );
-//     }
+//   @override
+//   void dispose() {
+//     _latCtrl.dispose();
+//     _lonCtrl.dispose();
+//     super.dispose();
 //   }
 
 //   @override
 //   Widget build(BuildContext context) {
 //     return Scaffold(
-//       appBar: AppBar(title: const Text('HEI / HPI - Home')),
+//       appBar: AppBar(
+//         title: const Text('AQUAMATRIX'),
+//         centerTitle: true,
+//       ),
 //       body: Padding(
 //         padding: const EdgeInsets.all(16.0),
 //         child: Column(
-//           crossAxisAlignment: CrossAxisAlignment.stretch,
 //           children: [
-//             TextField(
-//               controller: latController,
-//               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-//               decoration: const InputDecoration(labelText: 'Latitude (optional)'),
-//             ),
-//             TextField(
-//               controller: longController,
-//               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-//               decoration: const InputDecoration(labelText: 'Longitude (optional)'),
-//             ),
-//             const SizedBox(height: 16),
-//             ElevatedButton(
-//               onPressed: pickFile,
-//               child: const Text('Pick CSV / XLSX / PDF'),
-//             ),
-//             const SizedBox(height: 16),
-//             ElevatedButton(
-//               onPressed: fetchAllSamples,
-//               child: const Text('Fetch All Samples from Backend'),
-//             ),
-//             const SizedBox(height: 16),
+//             // Scrollable content
 //             Expanded(
-//               child: fetchedSamples.isEmpty
-//                   ? const Center(child: Text('No samples fetched yet'))
-//                   : ListView.builder(
-//                       itemCount: fetchedSamples.length,
-//                       itemBuilder: (context, index) {
-//                         final sample = fetchedSamples[index];
-//                         return Card(
-//                           margin: const EdgeInsets.symmetric(vertical: 4),
-//                           child: ListTile(
-//                             title: Text('Sample ID: ${sample.id ?? 'N/A'}'),
-//                             subtitle: Text(
-//                               'HEI: ${sample.hei}, HPI: ${sample.hpi}, Class: ${sample.classification}',
+//               child: SingleChildScrollView(
+//                 child: Column(
+//                   children: [
+//                     // Latitude / Longitude input
+//                     Row(
+//                       children: [
+//                         Expanded(
+//                           child: TextField(
+//                             controller: _latCtrl,
+//                             keyboardType: const TextInputType.numberWithOptions(
+//                                 decimal: true),
+//                             decoration: const InputDecoration(
+//                               labelText: 'Latitude',
+//                               hintText: 'e.g. 11.0168',
 //                             ),
 //                           ),
-//                         );
-//                       },
+//                         ),
+//                         const SizedBox(width: 12),
+//                         Expanded(
+//                           child: TextField(
+//                             controller: _lonCtrl,
+//                             keyboardType: const TextInputType.numberWithOptions(
+//                                 decimal: true),
+//                             decoration: const InputDecoration(
+//                               labelText: 'Longitude',
+//                               hintText: 'e.g. 76.9558',
+//                             ),
+//                           ),
+//                         ),
+//                       ],
 //                     ),
+
+//                     const SizedBox(height: 20),
+
+//                     // File picker
+//                     Row(
+//                       children: [
+//                         ElevatedButton.icon(
+//                           onPressed: isProcessing ? null : _pickFile,
+//                           icon: const Icon(Icons.attach_file),
+//                           label: const Text('Add a file'),
+//                         ),
+//                         const SizedBox(width: 12),
+//                         Expanded(
+//                           child: Text(pickedFileName ?? 'No file selected'),
+//                         ),
+//                       ],
+//                     ),
+
+//                     const SizedBox(height: 24),
+
+//                     // Submit button
+//                     SizedBox(
+//                       width: double.infinity,
+//                       child: ElevatedButton(
+//                         onPressed: isProcessing ? null : _submit,
+//                         child: isProcessing
+//                             ? const SizedBox(
+//                                 height: 18,
+//                                 width: 18,
+//                                 child: CircularProgressIndicator(
+//                                     strokeWidth: 2),
+//                               )
+//                             : const Text('Submit'),
+//                       ),
+//                     ),
+
+//                     const SizedBox(height: 16),
+
+//                     // Quick preview of parsed data
+//                     if (parsedData != null) ...[
+//                       const Align(
+//                         alignment: Alignment.centerLeft,
+//                         child: Text('Parsed values (preview):',
+//                             style: TextStyle(fontWeight: FontWeight.bold)),
+//                       ),
+//                       const SizedBox(height: 8),
+//                       SizedBox(
+//                         height: 120,
+//                         child: ListView(
+//                           children: parsedData!.entries
+//                               .map((e) => Text('${e.key} : ${e.value}'))
+//                               .toList(),
+//                         ),
+//                       ),
+//                     ],
+//                   ],
+//                 ),
+//               ),
+//             ),
+
+//             const SizedBox(height: 16),
+
+//             // RESULT HUB BUTTON (always enabled)
+//             SizedBox(
+//               width: double.infinity,
+//               child: ElevatedButton.icon(
+//                 onPressed: () {
+//                   Navigator.of(context).push(
+//                     MaterialPageRoute(
+//                       builder: (_) => ResultHub(sample: currentSample),
+//                     ),
+//                   );
+//                 },
+//                 icon: const Icon(Icons.dashboard),
+//                 label: const Padding(
+//                   padding: EdgeInsets.symmetric(vertical: 16),
+//                   child:
+//                       Text('Go to Result Hub', style: TextStyle(fontSize: 18)),
+//                 ),
+//               ),
 //             ),
 //           ],
 //         ),
@@ -301,14 +481,13 @@
 // }
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/file_parser.dart';
 import '../services/compute.dart';
 import '../services/db_helper.dart';
 import '../models/sample.dart';
-import '../screens/api_service.dart';
-import 'map_screen.dart';
-import '../screens/preview_screen.dart';
-import '../screens/result_screen.dart';
+import 'result_screen.dart';
+import 'result_hub.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -318,164 +497,365 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController latController = TextEditingController();
-  final TextEditingController longController = TextEditingController();
+  final TextEditingController _latCtrl = TextEditingController();
+  final TextEditingController _lonCtrl = TextEditingController();
 
-  List<Sample> fetchedSamples = []; // Store samples from backend
+  Map<String, double>? parsedData;
+  String? pickedFileName;
+  bool isProcessing = false;
+  Sample? currentSample;
 
-  @override
-  void dispose() {
-    latController.dispose();
-    longController.dispose();
-    super.dispose();
+  Future<void> _pickFile() async {
+    setState(() {
+      parsedData = null;
+      pickedFileName = null;
+      currentSample = null;
+    });
+
+    final map = await FileParser.pickAndParseFile();
+    if (map == null || map.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No data parsed')),
+      );
+      return;
+    }
+
+    setState(() {
+      parsedData = map;
+      pickedFileName = 'File selected';
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Parsed ${map.length} metals from file')),
+    );
   }
 
-  Future<void> pickFile() async {
+  Future<void> _submit() async {
+    if (parsedData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a file')),
+      );
+      return;
+    }
+
+    setState(() => isProcessing = true);
+
     try {
-      final map = await FileParser.pickAndParseFile();
-      if (map == null) return;
+      final compute = Provider.of<ComputeService>(context, listen: false);
+      final hei = compute.computeHEI(parsedData!);
+      final hpi = compute.computeHPI(parsedData!);
+      final classification = compute.classifyByHEI(hei);
 
-      final double hei = ComputeService().computeHEI(map);
-      final double hpi = ComputeService().computeHPI(map);
-      final String classification = ComputeService().classifyByHEI(hei);
-
-      final double lat = double.tryParse(latController.text) ?? 11.0;
-      final double lon = double.tryParse(longController.text) ?? 77.0;
-
-      const standards = {"Pb": 0.01, "Cd": 0.003, "As": 0.01};
-      bool isSafe = map.entries.every((e) =>
-          standards[e.key] == null || e.value <= standards[e.key]!);
+      final latText = _latCtrl.text.trim();
+      final lonText = _lonCtrl.text.trim();
+      final double? lat = latText.isEmpty ? null : double.tryParse(latText);
+      final double? lon = lonText.isEmpty ? null : double.tryParse(lonText);
 
       final sample = Sample(
-        timestamp: DateTime.now().toIso8601String(),
+        timestamp: compute.timestampNow(),
         latitude: lat,
         longitude: lon,
-        rawData: map,
+        rawData: parsedData!,
         hei: hei,
         hpi: hpi,
         classification: classification,
         syncStatus: 'pending',
       );
 
-      // Save to local Hive DB
-      final key = await DBHelper.instance.insertSample(sample);
-      final savedSample = sample.copyWith(id: int.tryParse(key));
+      await DBHelper.instance.insertSample(sample);
 
-      if (!mounted) return;
-
-      // Send the sample to backend
-      bool sent = await ApiService.sendSample(savedSample);
-      print(sent ? '✅ Sample sent to backend' : '❌ Failed to send sample');
-
-      // Navigate to PreviewScreen
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PreviewScreen(
-            sample: savedSample,
-            onProceed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ResultScreen(
-                    latitude: lat,
-                    longitude: lon,
-                    isSafe: isSafe,
-                    sample: savedSample,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error picking file: $e')),
-      );
-    }
-  }
-
-  // 🔹 Fetch all samples from backend
-  Future<void> fetchAllSamples() async {
-    try {
-      List<Sample> samples = await ApiService.fetchSamples();
       setState(() {
-        fetchedSamples = samples;
+        currentSample = sample;    
       });
+
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ResultScreen(sample: sample)),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching samples: $e')),
+        SnackBar(content: Text('Error processing file: $e')),
       );
+    } finally {
+      setState(() => isProcessing = false);
     }
   }
 
   @override
+  void dispose() {
+    _latCtrl.dispose();
+    _lonCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // 🎨 Updated color palette
+    const deepBlue = Color(0xFF1E3A8A); // primary
+    const white = Color(0xFFFFFFFF); // background
+    const coolGrey = Color(0xFF6B7280); // text/icons
+    const aquaTeal = Color(0xFF14B8A6); // highlight
+
     return Scaffold(
-      appBar: AppBar(title: const Text('HEI / HPI - Home')),
+      backgroundColor: white,
+      appBar: AppBar(
+        title: const Text(
+          '🌊 AQUAMATRIX',
+          style: TextStyle(
+            color: white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: deepBlue,
+        elevation: 0,
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
-              controller: latController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Latitude (optional)'),
-            ),
-            TextField(
-              controller: longController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Longitude (optional)'),
-            ),
-            const SizedBox(height: 16),
-
-            // Upload File
-            ElevatedButton(
-              onPressed: pickFile,
-              child: const Text('Pick CSV / XLSX / PDF'),
-            ),
-            const SizedBox(height: 16),
-
-            // Fetch Samples
-            ElevatedButton(
-              onPressed: fetchAllSamples,
-              child: const Text('Fetch All Samples from Backend'),
-            ),
-            const SizedBox(height: 16),
-
-            // 🌍 Show Map with All Samples
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const MapScreen()),
-                );
-              },
-              child: const Text('View All Samples on Map'),
-            ),
-            const SizedBox(height: 16),
-
-            // List of fetched samples
             Expanded(
-              child: fetchedSamples.isEmpty
-                  ? const Center(child: Text('No samples fetched yet'))
-                  : ListView.builder(
-                      itemCount: fetchedSamples.length,
-                      itemBuilder: (context, index) {
-                        final sample = fetchedSamples[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          child: ListTile(
-                            title: Text('Sample ID: ${sample.id ?? 'N/A'}'),
-                            subtitle: Text(
-                              'HEI: ${sample.hei}, HPI: ${sample.hpi}, Class: ${sample.classification}',
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    // LOCATION INPUT
+                    Card(
+                      color: white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: const BorderSide(color: coolGrey, width: 0.5),
+                      ),
+                      elevation: 2,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "📍 Location Info",
+                              style: TextStyle(
+                                color: deepBlue,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _latCtrl,
+                                    style: const TextStyle(color: deepBlue),
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(decimal: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Latitude',
+                                      hintText: 'e.g. 11.0168',
+                                      labelStyle: const TextStyle(color: coolGrey),
+                                      hintStyle: const TextStyle(color: coolGrey),
+                                      prefixIcon: const Icon(Icons.place, color: aquaTeal),
+                                      filled: true,
+                                      fillColor: white,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: aquaTeal),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: aquaTeal, width: 2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _lonCtrl,
+                                    style: const TextStyle(color: deepBlue),
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(decimal: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Longitude',
+                                      hintText: 'e.g. 76.9558',
+                                      labelStyle: const TextStyle(color: coolGrey),
+                                      hintStyle: const TextStyle(color: coolGrey),
+                                      prefixIcon: const Icon(Icons.place, color: aquaTeal),
+                                      filled: true,
+                                      fillColor: white,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: aquaTeal),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: aquaTeal, width: 2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
+
+                    // FILE UPLOAD
+                    Card(
+                      color: white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: const BorderSide(color: coolGrey, width: 0.5),
+                      ),
+                      elevation: 2,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "📂 File Upload",
+                              style: TextStyle(
+                                color: deepBlue,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: aquaTeal,
+                                    foregroundColor: white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 20, vertical: 12),
+                                  ),
+                                  onPressed: isProcessing ? null : _pickFile,
+                                  icon: const Icon(Icons.attach_file),
+                                  label: const Text('Add a file'),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    pickedFileName ?? 'No file selected',
+                                    style: TextStyle(
+                                      color: pickedFileName == null ? coolGrey : deepBlue,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // SUBMIT
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: aquaTeal,
+                          foregroundColor: white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        onPressed: isProcessing ? null : _submit,
+                        child: isProcessing
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: white,
+                                ),
+                              )
+                            : const Text(
+                                '🚀 Submit',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // PARSED DATA PREVIEW
+                    if (parsedData != null) ...[
+                      Card(
+                        color: white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: const BorderSide(color: coolGrey, width: 0.5),
+                        ),
+                        elevation: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                "🔍 Parsed values (preview):",
+                                style: TextStyle(
+                                  color: deepBlue,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                height: 120,
+                                child: ListView(
+                                  children: parsedData!.entries
+                                      .map((e) => Text(
+                                            '${e.key} : ${e.value.toStringAsFixed(3)}',
+                                            style: const TextStyle(color: deepBlue),
+                                          ))
+                                      .toList(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // RESULT HUB
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: deepBlue,
+                  foregroundColor: white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ResultHub(sample: currentSample),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.dashboard, size: 22),
+                label: const Text(
+                  'Go to Result Hub',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
           ],
         ),
@@ -483,4 +863,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-

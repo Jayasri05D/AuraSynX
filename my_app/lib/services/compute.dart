@@ -52,11 +52,11 @@ import 'package:intl/intl.dart';
 /// Standard limits for metals (uppercase keys)
 final Map<String, double> standards = {
   'PB': 0.01,
-  'CD': 0.003,
+  'CD': 0.0003,
   'CR': 0.05,
   'CU': 2.0,
   'ZN': 3.0,
-  'NI': 0.02,
+  'NI': 0.01,
   'FE': 0.3,
   'MN': 0.1,
   'AS': 0.01,
@@ -74,7 +74,6 @@ class ComputeService {
     }
     return sum;
   }
- 
   /// Compute Heavy Metal Pollution Index (HPI)
   double computeHPI(Map<String, double> sample) {
     double numerator = 0.0;
